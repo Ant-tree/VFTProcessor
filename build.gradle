@@ -1,0 +1,29 @@
+plugins { id 'java-library' }
+//plugins { id 'java' }
+
+group = 'com.anttree'
+version = '1.0'
+
+repositories {
+    mavenCentral()
+}
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(11) } }
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+jar {
+    archiveBaseName = "vft-processor"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes(
+                'Manifest-Version': '1.0',
+                'Main-Class': 'com.anttree.vft.processors.VftRunner'
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}

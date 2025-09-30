@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.anttree'
+version = '1.0.0.1'
+
+// Define buildType property: -PbuildType=debug or -PbuildType=release
+// Otherwise, define it in gradle.properties file as buildType=release
+def buildType = (project.findProperty('buildType') ?: 'release' as String)
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    testImplementation fileTree(dir: 'testlibs', include: ['*.jar'])
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register('vftTransform', JavaExec) {
+    dependsOn tasks.classes
+
+    def vftOut = layout.buildDirectory.dir("classes-vft/main").get().asFile
+
+    classpath = fileTree(dir: 'libs', include: 'vft-processor-1.0.jar')
+    args "$buildDir/classes/java/main", vftOut.absolutePath, buildType
+
+    doLast { sourceSets.main.output.classesDirs.setFrom(files(vftOut)) }
+}
+
+jar {
+    dependsOn tasks.named('vftTransform')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes(
+                'Manifest-Version': '1.0',
+                'Main-Class': 'com.anttree.vft.example.Main'
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
