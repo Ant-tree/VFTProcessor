@@ -14,7 +14,11 @@ repositories {
 }
 
 dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation fileTree(
+            dir: 'libs',
+            include: ['*.jar'],
+            excludes: ['vft-processor-1.0.jar']
+    )
     testImplementation fileTree(dir: 'testlibs', include: ['*.jar'])
 }
 

@@ -27,4 +27,16 @@ public class Log {
             System.out.println(tag + " " + msg);
         }
     }
+
+    public static void error(String msg) {
+        if (ENABLED) {
+            System.out.println(msg);
+        }
+    }
+
+    public static void error(String msg, Throwable e) {
+        if (ENABLED) {
+            System.out.println(msg + " " + e.toString());
+        }
+    }
 }

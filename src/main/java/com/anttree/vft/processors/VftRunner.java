@@ -1,7 +1,12 @@
 package com.anttree.vft.processors;
  
+import com.anttree.vft.processors.transformer.AsmVftTransformer;
+import com.anttree.vft.processors.transformer.Transformer;
+
 import java.io.*;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Stream;
 
 public class VftRunner {
@@ -28,34 +33,55 @@ public class VftRunner {
         Files.createDirectories(outDir);
 
         try (Stream<Path> files = Files.walk(inDir)) {
-            transformVftASM(files, inDir, outDir, buildType);
+            transform(files, inDir, outDir, buildType);
         }
+        System.out.println("[ASM-VFT] Done for buildType=" + buildType);
     }
 
-    private static void transformVftASM(Stream<Path> files, Path inDir, Path outDir, String buildType) {
-        AsmVftTransformer transformer = new AsmVftTransformer(buildType);
+    private static void transform(Stream<Path> files, Path inDir, Path outDir, String buildType) {
+        List<Transformer> transformers = new ArrayList<>() {{
+            add(new AsmVftTransformer(buildType));
+        }};
+
         files.forEach(src -> {
             try {
                 Path rel = inDir.relativize(src);
                 Path dst = outDir.resolve(rel);
+                // If directory, create it
                 if (Files.isDirectory(src)) {
                     Files.createDirectories(dst);
-                } else if (src.toString().endsWith(".class")) {
-                    byte[] inBytes = Files.readAllBytes(src);
-                    byte[] outBytes = transformer.transform(inBytes);
-                    if (outBytes == null) {
-                        return;
-                    }
-                    Files.createDirectories(dst.getParent());
-                    Files.write(dst, outBytes);
-                } else {
+                    return;
+                }
+                // If not a .class file, just copy
+                if (!src.toString().endsWith(".class")) {
                     Files.createDirectories(dst.getParent());
                     Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
+                    return;
                 }
+                // It's a .class file - apply transformations
+                applyTransformation(transformers, src, dst);
+
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
         });
-        System.out.println("[ASM-VFT] Done for buildType=" + buildType);
+    }
+
+    private static void applyTransformation(List<Transformer> transformers, Path src, Path dst) throws IOException {
+        byte[] outBytes = null;
+        for (Transformer transformer : transformers) {
+            outBytes = transformer.transform(outBytes == null
+                    ? Files.readAllBytes(src)
+                    : outBytes
+            );
+            if (outBytes == null) {
+                return;
+            }
+        }
+        if (outBytes == null) {
+            return;
+        }
+        Files.createDirectories(dst.getParent());
+        Files.write(dst, outBytes);
     }
 }

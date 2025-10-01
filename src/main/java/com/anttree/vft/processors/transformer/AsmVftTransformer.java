@@ -1,7 +1,11 @@
-package com.anttree.vft.processors;
+package com.anttree.vft.processors.transformer;
 
+import com.anttree.vft.processors.Constants;
+import com.anttree.vft.processors.annotations.Unused;
 import com.anttree.vft.processors.annotations.VisibleForTesting;
+import com.anttree.vft.processors.models.Pair;
 import com.anttree.vft.processors.utils.Log;
+import com.anttree.vft.processors.utils.NodeUtils;
 import com.anttree.vft.processors.utils.Utils;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
@@ -11,9 +15,10 @@ import java.util.List;
 
 import static org.objectweb.asm.Opcodes.*;
 
-public class AsmVftTransformer {
+public class AsmVftTransformer implements Transformer {
 
-    private static final String ANN_DESC = Utils.getDescriptor(VisibleForTesting.class);
+    private static final String ANN_VFT_DESC = Utils.getAnnotationDesc("VisibleForTesting");
+    private static final String ANN_UNUSED_DESC = Utils.getAnnotationDesc("Unused");
 
     private final String buildTypeLower;
 
@@ -21,14 +26,19 @@ public class AsmVftTransformer {
         this.buildTypeLower = buildType == null ? "" : buildType.toLowerCase();
     }
 
+    @Override
     public byte[] transform(byte[] inBytes) {
-        ClassReader cr = new ClassReader(inBytes);
-        ClassNode classNode = new ClassNode();
-        cr.accept(classNode, 0); // 전체 트리 로드
+        if (inBytes == null || inBytes.length == 0) {
+            return inBytes;
+        }
+
+        ClassNode classNode = NodeUtils.toClassNode(inBytes);
 
         boolean changed = false;
 
-        VisibleForTestingAttrs classAttribute = readVft(classNode.visibleAnnotations);
+        Attribute classAttribute = readAttribute(
+                classNode.invisibleAnnotations
+        );
         if (classAttribute != null && matchesBuildType(classAttribute.flavor)) {
             int newAcc = applyScope(classNode.access, classAttribute.scope);
             if (newAcc != classNode.access) {
@@ -43,10 +53,11 @@ public class AsmVftTransformer {
             }
         }
 
-
         List<FieldNode> fields = new ArrayList<>();
         for (FieldNode fieldNode : classNode.fields) {
-            VisibleForTestingAttrs fieldAttribute = readVft(fieldNode.visibleAnnotations);
+            Attribute fieldAttribute = readAttribute(
+                    fieldNode.invisibleAnnotations
+            );
             if (fieldAttribute != null && matchesBuildType(fieldAttribute.flavor)) {
                 int newAcc = applyScope(fieldNode.access, fieldAttribute.scope);
                 if (newAcc == fieldNode.access) {
@@ -69,7 +80,9 @@ public class AsmVftTransformer {
 
         List<MethodNode> methods = new ArrayList<>();
         for (MethodNode methodNode : classNode.methods) {
-            VisibleForTestingAttrs methodAttribute = readVft(methodNode.visibleAnnotations);
+            Attribute methodAttribute = readAttribute(
+                    methodNode.invisibleAnnotations
+            );
             if (methodAttribute != null && matchesBuildType(methodAttribute.flavor)) {
                 int newAcc = applyScope(methodNode.access, methodAttribute.scope);
                 if (newAcc == methodNode.access) {
@@ -103,37 +116,56 @@ public class AsmVftTransformer {
         return cw.toByteArray();
     }
 
-    private static VisibleForTestingAttrs readVft(List<AnnotationNode> annotations) {
+    private static Attribute readAttribute(List<AnnotationNode> annotations) {
         if (annotations == null) {
             return null;
         }
         for (AnnotationNode annotation : annotations) {
-            if (!ANN_DESC.equals(annotation.desc)) continue;
-            String scope = null;
-            String flavor = null;
-            if (annotation.values == null) {
-                continue;
+            if (ANN_VFT_DESC.equals(annotation.desc)) {
+                return parseVftAnnotation(annotation);
             }
-            // values = [name1, value1, name2, value2, ...]
-            for (int index = 0; index < annotation.values.size(); index += 2) {
-                String name = (String) annotation.values.get(index);
-                Object value  = annotation.values.get(index + 1);
-                if (Constants.SCOPE.equals(name)) {
-                    // enum = String[]{desc, value}
-                    if (value instanceof String[]) {
-                        scope = ((String[]) value)[1]; // enum 상수명
-                    } else {
-                        throw new RuntimeException("Invalid VisibleForTesting.scope value: " + value);
-                    }
-                } else if (Constants.FLAVOR.equals(name)) {
-                    if (value instanceof String) {
-                        flavor = (String) value;
-                    }
-                }
+            if (ANN_UNUSED_DESC.equals(annotation.desc)) {
+                return parseUnusedAnnotation(annotation);
             }
-            return new VisibleForTestingAttrs(scope, flavor);
         }
         return null;
+    }
+
+    private static Attribute parseVftAnnotation(AnnotationNode ann) {
+        String scope    = Constants.SCOPE_NONE;
+        String flavor   = Constants.FLAVOR_RELEASE;
+        if (ann.values == null) {
+            return new Attribute(scope, flavor);
+        }
+
+        for (Pair<String, Object> pair : NodeUtils.annotationValues(ann)) {
+            String name = pair.getKey();
+            Object value = pair.getValue();
+            if (Constants.SCOPE.equals(name) && value instanceof String[]) {
+                scope = ((String[]) value)[1];
+            } else if (Constants.FLAVOR.equals(name) && value instanceof String) {
+                flavor = (String) value;
+            }
+        }
+        return new Attribute(scope, flavor);
+    }
+
+    private static Attribute parseUnusedAnnotation(AnnotationNode ann) {
+        String scope    = Constants.SCOPE_NONE;
+        String flavor   = Constants.FLAVOR_RELEASE;
+        if (ann.values == null) {
+            return new Attribute(scope, flavor);
+        }
+
+        for (Pair<String, Object> pair : NodeUtils.annotationValues(ann)) {
+            String name = pair.getKey();
+            Object value = pair.getValue();
+
+            if (Constants.FLAVOR.equals(name) && value instanceof String) {
+                flavor = (String) value;
+            }
+        }
+        return new Attribute(scope, flavor);
     }
 
     private boolean matchesBuildType(String annotationFlavor) {
@@ -166,10 +198,9 @@ public class AsmVftTransformer {
         }
     }
 
-    private static final class VisibleForTestingAttrs {
+    private static final class Attribute {
         final String scope;
         final String flavor;
-        VisibleForTestingAttrs(String scope, String flavor) { this.scope = scope; this.flavor = flavor; }
+        Attribute(String scope, String flavor) { this.scope = scope; this.flavor = flavor; }
     }
 }
- 

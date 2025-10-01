@@ -1,5 +1,4 @@
 plugins { id 'java-library' }
-//plugins { id 'java' }
 
 group = 'com.anttree'
 version = '1.0'
@@ -14,9 +13,28 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
 
-jar {
-    archiveBaseName = "vft-processor"
+// vft-processor-annotations.jar - annotations package only
+tasks.register('annotationsJar', Jar) {
+    archiveBaseName = "vft-processor-ann"
+    archiveClassifier = ""
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from sourceSets.main.output
+    include 'com/anttree/vft/processors/annotations/**'
+
+    manifest {
+        attributes(
+                'Manifest-Version': '1.0'
+        )
+    }
+}
+
+// vft-processor.jar - rest of the packages except annotations
+tasks.register('processorJar', Jar) {
+    archiveBaseName = "vft-processor"
+    archiveClassifier = ""
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
     manifest {
         attributes(
                 'Manifest-Version': '1.0',
@@ -26,4 +44,11 @@ jar {
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
+    from sourceSets.main.output
+    exclude 'com/anttree/vft/processors/annotations/**'
+}
+
+jar {
+    dependsOn annotationsJar, processorJar
+    enabled = false
 }
