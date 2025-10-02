@@ -49,3 +49,20 @@ jar {
     ...
 }
 ```
+
+## 3. Build
+To build this repository, gradle is required.
+
+Run the gradle task jar to build the jar file. or run the command below to build the jar file.
+
+```bash
+./gradlew jar
+```
+In this way, the jar files will be generated at {PROJECT_ROOT}/build/libs/.
+
+```bash
+vft-processor.jar
+vft-processor-ann.jar
+```
+
+Make sure everything is packed properly.
